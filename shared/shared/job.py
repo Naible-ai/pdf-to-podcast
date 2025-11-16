@@ -65,14 +65,20 @@ class JobStatusManager:
             )
             self.redis.publish("status_updates:all", json.dumps(update).encode())
 
-    def update_status(self, job_id: str, status: str, message: str):
+    def update_status(self, job_id: str, status: str, message: str,
+                     percentage: float = None, eta_seconds: int = None,
+                     tokens_used: int = None, estimated_cost: float = None):
         """
-        Update the status of an existing job.
-        
+        Update the status of an existing job with enhanced progress tracking.
+
         Args:
             job_id (str): Job identifier
             status (str): New status value
             message (str): Status update message
+            percentage (float, optional): Completion percentage (0-100)
+            eta_seconds (int, optional): Estimated time to completion in seconds
+            tokens_used (int, optional): Total tokens consumed
+            estimated_cost (float, optional): Estimated cost in USD
         """
         with self.telemetry.tracer.start_as_current_span("job.update_status") as span:
             span.set_attribute("job_id", job_id)
@@ -83,6 +89,21 @@ class JobStatusManager:
                 "service": self.service_type,
                 "timestamp": time.time(),
             }
+
+            # Add optional progress metrics
+            if percentage is not None:
+                update["percentage"] = round(percentage, 2)
+                span.set_attribute("percentage", percentage)
+            if eta_seconds is not None:
+                update["eta_seconds"] = eta_seconds
+                span.set_attribute("eta_seconds", eta_seconds)
+            if tokens_used is not None:
+                update["tokens_used"] = tokens_used
+                span.set_attribute("tokens_used", tokens_used)
+            if estimated_cost is not None:
+                update["estimated_cost"] = round(estimated_cost, 4)
+                span.set_attribute("estimated_cost", estimated_cost)
+
             # Encode the update dict as JSON bytes
             hset_key = f"status:{job_id}:{str(self.service_type)}"
             span.set_attribute("hset_key", hset_key)

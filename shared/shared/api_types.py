@@ -4,6 +4,37 @@ from .pdf_types import PDFMetadata
 from enum import Enum
 
 
+class VoiceSettings(BaseModel):
+    """
+    Advanced voice configuration for text-to-speech generation.
+
+    These settings control the quality and characteristics of the generated audio.
+    """
+    voice_id: str = Field(..., description="ElevenLabs voice ID")
+    stability: float = Field(
+        0.5,
+        ge=0.0,
+        le=1.0,
+        description="Voice stability (0-1). Higher = more consistent, lower = more varied"
+    )
+    similarity_boost: float = Field(
+        0.75,
+        ge=0.0,
+        le=1.0,
+        description="Similarity to original voice (0-1). Higher = more accurate to original"
+    )
+    style_exaggeration: float = Field(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="Style amplification (0-1). Higher = more expressive/exaggerated"
+    )
+    use_speaker_boost: bool = Field(
+        True,
+        description="Enable speaker boost for improved audio quality"
+    )
+
+
 class JobStatus(str, Enum):
     """Enum representing the possible states of a job."""
     PENDING = "pending"  # Job has been created but not started
@@ -58,6 +89,10 @@ class TranscriptionParams(BaseModel):
             "speaker-1": "iP95p4xoKVk53GoZ742B",
             "speaker-2": "9BWtsMINqrJLrRacOk9x",
         },
+    )
+    voice_settings: Optional[Dict[str, VoiceSettings]] = Field(
+        None,
+        description="Advanced voice settings per speaker (optional). If not provided, uses defaults."
     )
     guide: Optional[str] = Field(
         None, description="Optional guidance for the transcription focus and structure"

@@ -130,29 +130,52 @@ class LLMManager:
                 logger.warning("Using default configurations")
         return {key: ModelConfig.from_dict(config) for key, config in configs.items()}
 
-    def get_llm(self, model_key: str) -> ChatNVIDIA:
+    def get_llm(
+        self,
+        model_key: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> ChatNVIDIA:
         """Get or create a ChatNVIDIA model for the specified model key.
-        
+
         Args:
             model_key (str): Key identifying which model configuration to use
-            
+            temperature (Optional[float]): Sampling temperature (0.0-1.0)
+            top_p (Optional[float]): Nucleus sampling threshold (0.0-1.0)
+            max_tokens (Optional[int]): Maximum tokens to generate
+
         Returns:
             ChatNVIDIA: Initialized ChatNVIDIA instance
-            
+
         Raises:
             ValueError: If model_key is not found in configurations
         """
         if model_key not in self.model_configs:
             raise ValueError(f"Unknown model key: {model_key}")
-        if model_key not in self._llm_cache:
+
+        # Create cache key with parameters
+        cache_key = f"{model_key}_{temperature}_{top_p}_{max_tokens}"
+
+        if cache_key not in self._llm_cache:
             config = self.model_configs[model_key]
-            self._llm_cache[model_key] = ChatNVIDIA(
-                model=config.name,
-                base_url=config.api_base,
-                nvidia_api_key=self.api_key,
-                max_tokens=None,
-            )
-        return self._llm_cache[model_key]
+            kwargs = {
+                "model": config.name,
+                "base_url": config.api_base,
+                "nvidia_api_key": self.api_key,
+            }
+
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            if top_p is not None:
+                kwargs["top_p"] = top_p
+            if max_tokens is not None:
+                kwargs["max_tokens"] = max_tokens
+            else:
+                kwargs["max_tokens"] = None
+
+            self._llm_cache[cache_key] = ChatNVIDIA(**kwargs)
+        return self._llm_cache[cache_key]
 
     def query_sync(
         self,
@@ -161,19 +184,25 @@ class LLMManager:
         query_name: str,
         json_schema: Optional[Dict] = None,
         retries: int = 5,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> Union[AIMessage, Dict[str, Any]]:
         """Send a synchronous query to the specified model.
-        
+
         Args:
             model_key (str): Key identifying which model to use
             messages (List[Dict[str, str]]): List of message dictionaries
             query_name (str): Name of query for telemetry
             json_schema (Optional[Dict]): Schema for structured output
             retries (int): Number of retry attempts
-            
+            temperature (Optional[float]): Sampling temperature (0.0-1.0)
+            top_p (Optional[float]): Nucleus sampling threshold (0.0-1.0)
+            max_tokens (Optional[int]): Maximum tokens to generate
+
         Returns:
             Union[AIMessage, Dict[str, Any]]: Model response
-            
+
         Raises:
             Exception: If query fails after retries
         """
@@ -183,9 +212,13 @@ class LLMManager:
             span.set_attribute("model_key", model_key)
             span.set_attribute("retries", retries)
             span.set_attribute("async", False)
+            if temperature is not None:
+                span.set_attribute("temperature", temperature)
+            if top_p is not None:
+                span.set_attribute("top_p", top_p)
 
             try:
-                llm = self.get_llm(model_key)
+                llm = self.get_llm(model_key, temperature, top_p, max_tokens)
                 if json_schema:
                     llm = llm.with_structured_output(json_schema)
                 llm = llm.with_retry(
@@ -208,19 +241,25 @@ class LLMManager:
         query_name: str,
         json_schema: Optional[Dict] = None,
         retries: int = 5,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
     ) -> Union[AIMessage, Dict[str, Any]]:
         """Send an asynchronous query to the specified model.
-        
+
         Args:
             model_key (str): Key identifying which model to use
             messages (List[Dict[str, str]]): List of message dictionaries
             query_name (str): Name of query for telemetry
             json_schema (Optional[Dict]): Schema for structured output
             retries (int): Number of retry attempts
-            
+            temperature (Optional[float]): Sampling temperature (0.0-1.0)
+            top_p (Optional[float]): Nucleus sampling threshold (0.0-1.0)
+            max_tokens (Optional[int]): Maximum tokens to generate
+
         Returns:
             Union[AIMessage, Dict[str, Any]]: Model response
-            
+
         Raises:
             Exception: If query fails after retries
         """
@@ -230,9 +269,13 @@ class LLMManager:
             span.set_attribute("model_key", model_key)
             span.set_attribute("retries", retries)
             span.set_attribute("async", True)
+            if temperature is not None:
+                span.set_attribute("temperature", temperature)
+            if top_p is not None:
+                span.set_attribute("top_p", top_p)
 
             try:
-                llm = self.get_llm(model_key)
+                llm = self.get_llm(model_key, temperature, top_p, max_tokens)
                 if json_schema:
                     llm = llm.with_structured_output(json_schema)
                 llm = llm.with_retry(
